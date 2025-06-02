@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Body Composition Calculator</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #f4f4f4; margin: 0; }
+    header {
+      background: #0072C6; color: white; padding: 1rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .lang-switch img { width: 24px; cursor: pointer; margin-left: 0.5rem; }
+    main {
+      background: white; max-width: 900px; margin: 2rem auto; padding: 2rem;
+      border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    label, select, input { display: block; width: 100%; margin: 0.5rem 0; }
+    input[type="number"] { padding: 0.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; }
+    .buttons { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1rem; }
+    button {
+      flex: 1 1 30%; padding: 0.75rem; border: none; border-radius: 4px;
+      color: white; font-weight: bold; font-size: 1rem; cursor: pointer;
+    }
+    #calculate { background: #0072C6; }
+    #reset { background: #dc3545; }
+    #csv { background: #28a745; }
+    .charts, .history-table { margin-top: 2rem; text-align: center; }
+    canvas { max-width: 100%; }
+    .error { color: red; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
+    th { background: #0072C6; color: white; }
+  </style>
+</head>
+<body>
+<header>
+  <h1 id="title">Body Composition Calculator</h1>
+  <div class="lang-switch">
+    <img src="https://flagcdn.com/w40/gb.png" alt="EN" onclick="switchLang('en')">
+    <img src="https://flagcdn.com/w40/it.png" alt="IT" onclick="switchLang('it')">
+  </div>
+</header>
+<main>
+  <form id="form">
+    <label id="label-sex">Sex:</label>
+    <select id="sex">
+      <option value="male">Male</option>
+      <option value="female">Female</option>
+    </select>
+    <label id="label-age">Age:</label>
+    <input type="number" id="age" required>
+    <label id="label-weight">Weight (kg):</label>
+    <input type="number" id="weight" required>
+    <label id="label-skinfolds">Skinfolds (mm):</label>
+    <div class="grid">
+      <input type="number" id="chest" placeholder="Chest" required>
+      <input type="number" id="abdominal" placeholder="Abdominal" required>
+      <input type="number" id="thigh" placeholder="Thigh" required>
+      <input type="number" id="midaxillary" placeholder="Midaxillary" required>
+      <input type="number" id="subscapular" placeholder="Subscapular" required>
+      <input type="number" id="triceps" placeholder="Triceps" required>
+      <input type="number" id="suprailiac" placeholder="Suprailiac" required>
+    </div>
+    <div class="buttons">
+      <button type="submit" id="calculate">Calculate</button>
+      <button type="button" id="reset" onclick="resetForm()">Reset</button>
+      <button type="button" id="csv" onclick="exportCSV()">Export CSV</button>
+    </div>
+  </form>
+  <div id="error" class="error"></div>
+  <div id="results" class="charts">
+    <div id="output"></div>
+    <canvas id="pieChart"></canvas>
+    <canvas id="lineChart"></canvas>
+  </div>
+  <div class="history-table">
+    <table id="historyTable">
+      <thead><tr><th>Date</th><th>Fat %</th><th>Lean %</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+<script>
+  let pieChart = null, lineChart = null;
+  let history = JSON.parse(localStorage.getItem("history")) || [];
+
+  document.getElementById("form").addEventListener("submit", function(e) {
+    e.preventDefault();
+    document.getElementById("error").textContent = "";
+
+    const age = +document.getElementById("age").value;
+    const weight = +document.getElementById("weight").value;
+    const sex = document.getElementById("sex").value;
+    const skinfolds = ["chest", "abdominal", "thigh", "midaxillary", "subscapular", "triceps", "suprailiac"]
+      .map(id => +document.getElementById(id).value);
+
+    if ([...skinfolds, age, weight].some(v => v <= 0)) {
+      document.getElementById("error").textContent = "All values must be greater than zero.";
+      return;
+    }
+
+    const sum = skinfolds.reduce((a, b) => a + b, 0);
+    const density = sex === "male"
+      ? 1.112 - 0.00043499 * sum + 0.00000055 * sum ** 2 - 0.00028826 * age
+      : 1.097 - 0.00046971 * sum + 0.00000056 * sum ** 2 - 0.00012828 * age;
+
+    const fatPct = +(495 / density - 450).toFixed(1);
+    const leanPct = +(100 - fatPct).toFixed(1);
+    const fatKg = +(weight * fatPct / 100).toFixed(1);
+    const leanKg = +(weight - fatKg).toFixed(1);
+
+    const resultHTML = `Fat: ${fatPct}% (${fatKg} kg)<br>Lean: ${leanPct}% (${leanKg} kg)`;
+    document.getElementById("output").innerHTML = resultHTML;
+
+    const date = new Date().toISOString().split("T")[0];
+    history.push({ date, fat: fatPct, lean: leanPct });
+    localStorage.setItem("history", JSON.stringify(history));
+    updateCharts();
+    updateTable();
+  });
+
+  function resetForm() {
+    document.querySelectorAll('#form input, #form select').forEach(el => el.value = '');
+
+    // Form fields manually cleared above
+    document.getElementById("output").innerHTML = "";
+    document.getElementById("error").textContent = "";
+    if (pieChart) { pieChart.destroy(); pieChart = null; }
+    if (lineChart) { lineChart.destroy(); lineChart = null; }
+    document.querySelector("#historyTable tbody").innerHTML = "";
+  }
+
+  function exportCSV() {
+    if (!history.length) return;
+    const csv = ["Date,Fat %,Lean %"];
+    history.forEach(item => {
+      csv.push(`${item.date},${item.fat},${item.lean}`);
+    });
+    const blob = new Blob([csv.join("\n")], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "body_composition_history.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function updateCharts() {
+    const latest = history[history.length - 1];
+    const ctxPie = document.getElementById("pieChart").getContext("2d");
+    const ctxLine = document.getElementById("lineChart").getContext("2d");
+
+    if (pieChart) pieChart.destroy();
+    pieChart = new Chart(ctxPie, {
+      type: "pie",
+      data: {
+        labels: ["Fat %", "Lean %"],
+        datasets: [{ data: [latest.fat, latest.lean], backgroundColor: ["#dc3545", "#0072C6"] }]
+      }
+    });
+
+    const labels = history.map(h => h.date);
+    const fatData = history.map(h => h.fat);
+    const leanData = history.map(h => h.lean);
+    if (lineChart) lineChart.destroy();
+    lineChart = new Chart(ctxLine, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Fat %", data: fatData, borderColor: "#dc3545", fill: false },
+          { label: "Lean %", data: leanData, borderColor: "#0072C6", fill: false }
+        ]
+      }
+    });
+  }
+
+  function updateTable() {
+    const tbody = document.querySelector("#historyTable tbody");
+    tbody.innerHTML = "";
+    history.forEach(row => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${row.date}</td><td>${row.fat}</td><td>${row.lean}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function switchLang(lang) {
+    const t = {
+      en: {
+        title: "Body Composition Calculator",
+        "label-sex": "Sex:", "label-age": "Age:",
+        "label-weight": "Weight (kg):", "label-skinfolds": "Skinfolds (mm):",
+        "calculate": "Calculate", "reset": "Reset", "csv": "Export CSV"
+      },
+      it: {
+        title: "Calcolatore Composizione Corporea",
+        "label-sex": "Sesso:", "label-age": "Età:",
+        "label-weight": "Peso (kg):", "label-skinfolds": "Pliche (mm):",
+        "calculate": "Calcola", "reset": "Resetta", "csv": "Esporta CSV"
+      }
+    }[lang];
+    for (let id in t) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = t[id];
+    }
+    document.getElementById("title").textContent = t.title;
+  }
+
+  window.onload = () => {
+    switchLang(navigator.language.startsWith("it") ? "it" : "en");
+    if (history.length > 0) {
+      updateCharts();
+      updateTable();
+    }
+  };
+</script>
+</body>
+</html>

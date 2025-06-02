@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Body Composition Calculator - Jackson & Pollock 7-Site</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-color: #0072C6;
+      --secondary-color: #E5EEF6;
+      --text-color: #333;
+      --background-color: #f0f4f8;
+      --card-background: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Roboto', sans-serif;
+      margin: 0; padding: 0;
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+    header {
+      background-color: var(--primary-color);
+      color: white;
+      padding: 1.5rem;
+      text-align: center;
+      position: relative;
+    }
+    .lang-switch {
+      position: absolute;
+      right: 1rem;
+      top: 1rem;
+    }
+    main {
+      max-width: 800px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background-color: var(--card-background);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 { margin-top: 0; font-size: 1.8rem; }
+    form label {
+      display: block;
+      margin: 1rem 0 0.5rem;
+      font-weight: bold;
+    }
+    input[type="number"], select {
+      width: 100%; padding: 0.6rem;
+      margin-bottom: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    button {
+      width: 100%; padding: 0.75rem;
+      background-color: var(--primary-color);
+      color: white;
+      border: none; border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 1rem;
+    }
+    button:hover { background-color: #005fa3; }
+    .result-section {
+      margin-top: 2rem;
+      text-align: center;
+    }
+    #result {
+      font-size: 1.2rem;
+      margin-bottom: 1rem;
+      font-weight: bold;
+    }
+    canvas {
+      margin-top: 2rem;
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Body Fat Calculation - Jackson & Pollock 7-Site Method</h1>
+    <div class="lang-switch">
+      <button onclick="switchLang('en')">EN</button>
+      <button onclick="switchLang('it')">IT</button>
+    </div>
+  </header>
+  <main>
+    <form id="formCalc">
+      <label for="sex" id="label-sex">Sex:</label>
+      <select id="sex" required>
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+      <label for="age" id="label-age">Age (years):</label>
+      <input type="number" id="age" required>
+      <label for="weight" id="label-weight">Weight (kg):</label>
+      <input type="number" id="weight" required>
+      <label id="label-skinfolds">Enter skinfolds in mm:</label>
+      <input type="number" id="chest" placeholder="Chest" required>
+      <input type="number" id="abdominal" placeholder="Abdominal" required>
+      <input type="number" id="thigh" placeholder="Thigh" required>
+      <input type="number" id="midaxillary" placeholder="Midaxillary" required>
+      <input type="number" id="subscapular" placeholder="Subscapular" required>
+      <input type="number" id="triceps" placeholder="Triceps" required>
+      <input type="number" id="suprailiac" placeholder="Suprailiac" required>
+      <button type="submit" id="calc-btn">Calculate</button>
+    </form>
+    <div class="result-section">
+      <div id="result"></div>
+      <canvas id="chart"></canvas>
+      <button onclick="exportPDF()" id="pdf-btn">Export to PDF</button>
+      <button onclick="exportCSV()" id="csv-btn">Export to CSV</button>
+      <button onclick="resetForm()" id="reset-btn">Reset</button>
+    </div>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    const labels = {
+      en: {
+        title: "Body Fat Calculation - Jackson & Pollock 7-Site Method",
+        sex: "Sex:", age: "Age (years):", weight: "Weight (kg):",
+        skinfolds: "Enter skinfolds in mm:",
+        calc: "Calculate", pdf: "Export to PDF", csv: "Export to CSV",
+        male: "Male", female: "Female",
+        fat: "Body Fat", lean: "Lean Mass",
+        fatKg: "Fat Mass (kg)", leanKg: "Lean Mass (kg)"
+      },
+      it: {
+        title: "Calcolo Massa Grassa - Metodo Jackson & Pollock a 7 Pliche",
+        sex: "Sesso:", age: "Età (anni):", weight: "Peso (kg):",
+        skinfolds: "Inserisci le pliche in mm:",
+        calc: "Calcola", pdf: "Esporta in PDF", csv: "Esporta in CSV",
+        male: "Maschio", female: "Femmina",
+        fat: "Massa Grassa", lean: "Massa Magra",
+        fatKg: "Massa Grassa (kg)", leanKg: "Massa Magra (kg)"
+      }
+    };
+    let currentLang = 'en';
+    const chartData = [];
+
+    function switchLang(lang) {
+      currentLang = lang;
+      document.getElementById('title').innerText = labels[lang].title;
+      document.getElementById('label-sex').innerText = labels[lang].sex;
+      document.getElementById('label-age').innerText = labels[lang].age;
+      document.getElementById('label-weight').innerText = labels[lang].weight;
+      document.getElementById('label-skinfolds').innerText = labels[lang].skinfolds;
+      document.getElementById('calc-btn').innerText = labels[lang].calc;
+      document.getElementById('pdf-btn').innerText = labels[lang].pdf;
+      document.getElementById('csv-btn').innerText = labels[lang].csv;
+      document.getElementById('reset-btn').innerText = 'Reset';
+      const sexSelect = document.getElementById('sex');
+      sexSelect.options[0].text = labels[lang].male;
+      sexSelect.options[1].text = labels[lang].female;
+    }
+
+    function resetForm() {
+      document.getElementById('formCalc').reset();
+      document.getElementById('result').innerHTML = '';
+      const chartContainer = document.getElementById('chart');
+      const ctx = chartContainer.getContext('2d');
+      ctx.clearRect(0, 0, chartContainer.width, chartContainer.height);
+    }
+
+    document.getElementById('formCalc').addEventListener('submit', function(event) {
+      event.preventDefault();
+      const sex = document.getElementById('sex').value;
+      const age = parseFloat(document.getElementById('age').value);
+      const weight = parseFloat(document.getElementById('weight').value);
+      const skinfolds = [
+        parseFloat(document.getElementById('chest').value),
+        parseFloat(document.getElementById('abdominal').value),
+        parseFloat(document.getElementById('thigh').value),
+        parseFloat(document.getElementById('midaxillary').value),
+        parseFloat(document.getElementById('subscapular').value),
+        parseFloat(document.getElementById('triceps').value),
+        parseFloat(document.getElementById('suprailiac').value)
+      ];
+      const sum = skinfolds.reduce((a, b) => a + b, 0);
+      let density;
+      if (sex === 'male') {
+        density = 1.112 - 0.00043499 * sum + 0.00000055 * Math.pow(sum, 2) - 0.00028826 * age;
+      } else {
+        density = 1.097 - 0.00046971 * sum + 0.00000056 * Math.pow(sum, 2) - 0.00012828 * age;
+      }
+      const fat = ((495 / density) - 450).toFixed(2);
+      const lean = (100 - fat).toFixed(2);
+      const fatKg = ((weight * fat) / 100).toFixed(2);
+      const leanKg = ((weight * lean) / 100).toFixed(2);
+      chartData.push({ date: new Date().toLocaleString(), fat, lean, fatKg, leanKg });
+      document.getElementById('result').innerHTML = `${labels[currentLang].fat}: ${fat}% (${fatKg} kg)<br>${labels[currentLang].lean}: ${lean}% (${leanKg} kg)`;
+      const ctx = document.getElementById('chart').getContext('2d');
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: [labels[currentLang].fat, labels[currentLang].lean],
+          datasets: [{
+            data: [fat, lean],
+            backgroundColor: ['#d9534f', '#5bc0de']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+      localStorage.setItem('bodyCompData', JSON.stringify(chartData));
+    });
+
+    function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text(currentLang === 'it' ? 'Report Composizione Corporea' : 'Body Composition Report', 10, 10);
+      chartData.forEach((record, i) => {
+        doc.text(`${i + 1}. ${record.date}, ${labels[currentLang].fat}: ${record.fat}% (${record.fatKg} kg), ${labels[currentLang].lean}: ${record.lean}% (${record.leanKg} kg)`, 10, 20 + i * 10);
+      });
+      doc.save(currentLang === 'it' ? 'report_composizione.pdf' : 'body_composition_report.pdf');
+    }
+
+    function exportCSV() {
+      const header = ['Date', labels[currentLang].fat, labels[currentLang].lean, labels[currentLang].fatKg, labels[currentLang].leanKg];
+      const rows = chartData.map(r => [r.date, r.fat, r.lean, r.fatKg, r.leanKg]);
+      const csv = [header, ...rows].map(e => e.join(",")).join("\n");
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', currentLang === 'it' ? 'report_composizione.csv' : 'body_composition_report.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    window.onload = () => {
+      const browserLang = navigator.language || navigator.userLanguage;
+      if (browserLang.startsWith('it')) switchLang('it');
+      else switchLang('en');
+      const saved = localStorage.getItem('bodyCompData');
+      if (saved) chartData.push(...JSON.parse(saved));
+    }
+  </script>
+</body>
+</html>
